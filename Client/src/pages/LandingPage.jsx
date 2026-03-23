@@ -23,6 +23,12 @@ const LandingPage = () => {
               >
                 Get Started
               </Link>
+              <Link 
+                to="/admin/login" 
+                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Admin
+              </Link>
             </nav>
           </div>
         </div>
