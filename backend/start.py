@@ -21,30 +21,33 @@ async def initialize_and_start():
     print("🚀 Cognivigil AI Backend Startup")
     print("=" * 50)
     
-    # Check if MongoDB is running
+    # Check if MongoDB is running (optional for demo)
+    mongodb_available = False
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
         from app.core.config import settings
         
-        client = AsyncIOMotorClient(settings.mongodb_url, serverSelectionTimeoutMS=5000)
+        client = AsyncIOMotorClient(settings.mongodb_url, serverSelectionTimeoutMS=3000)
         await client.admin.command('ping')
         await client.close()
         print("✅ MongoDB connection verified")
+        mongodb_available = True
     except Exception as e:
-        print("❌ MongoDB connection failed!")
+        print("⚠️  MongoDB not available - running in demo mode")
         print(f"   Error: {e}")
-        print("\n   Please make sure MongoDB is running on localhost:27017")
-        print("   You can start MongoDB with: 'mongod' or via MongoDB Compass")
-        sys.exit(1)
+        print("   Backend will work with demo data")
     
-    # Initialize sample data
-    print("\n🌱 Initializing sample data...")
-    try:
-        await init_sample_data()
-        print("✅ Sample data initialized successfully")
-    except Exception as e:
-        print(f"❌ Failed to initialize sample data: {e}")
-        print("   Continuing with server startup...")
+    # Initialize sample data only if MongoDB is available
+    if mongodb_available:
+        print("\n🌱 Initializing sample data...")
+        try:
+            await init_sample_data()
+            print("✅ Sample data initialized successfully")
+        except Exception as e:
+            print(f"❌ Failed to initialize sample data: {e}")
+            print("   Continuing with server startup...")
+    else:
+        print("\n🌱 Skipping sample data (MongoDB not available)")
     
     print("\n🌐 Starting FastAPI server...")
     print("   Server will be available at: http://localhost:8000")

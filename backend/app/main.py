@@ -18,11 +18,14 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Cognivigil AI Backend...")
     
-    # Connect to database
-    await database.connect_to_mongo()
-    
-    # Create database indexes
-    await database.create_indexes()
+    # Try to connect to database (optional for demo)
+    try:
+        await database.connect_to_mongo()
+        await database.create_indexes()
+        print("✅ MongoDB connected and indexes created")
+    except Exception as e:
+        print(f"⚠️  MongoDB setup skipped: {e}")
+        print("   Backend will work in demo mode")
     
     # Initialize AI models
     await detection_service.initialize_models()
@@ -33,7 +36,11 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     print("🛑 Shutting down Cognivigil AI Backend...")
-    await database.close_mongo_connection()
+    try:
+        await database.close_mongo_connection()
+        print("✅ Database connection closed")
+    except:
+        print("⚠️  No database connection to close")
     print("✅ Backend shutdown complete!")
 
 
