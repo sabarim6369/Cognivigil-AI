@@ -88,8 +88,9 @@ async def health_check_simple():
         # Check database connection
         db_connected = False
         try:
-            await database.get_database()
-            db_connected = True
+            db = await database.get_database()
+            if db is not None:
+                db_connected = True
         except Exception:
             pass
         

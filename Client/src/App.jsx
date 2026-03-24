@@ -5,6 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 import TestPage from './pages/TestPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import BackendTest from './components/BackendTest';
 import './App.css';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
         <Route path="/test/:testId" element={<TestPage />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+        <Route path="/test-backend" element={<BackendTest />} />
       </Routes>
     </Router>
   );

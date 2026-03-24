@@ -1,43 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import apiService from '../services/api';
 
 const DashboardPage = () => {
-  const [selectedTest, setSelectedTest] = useState(null);
 
-  const sampleTests = [
-    {
-      id: 1,
-      title: 'Mathematics Assessment',
-      duration: '60 minutes',
-      questions: 50,
-      difficulty: 'Medium',
-      status: 'Available',
-      description: 'Comprehensive math test covering algebra, geometry, and calculus'
-    },
-    {
-      id: 2,
-      title: 'Computer Science Fundamentals',
-      duration: '90 minutes',
-      questions: 75,
-      difficulty: 'Hard',
-      status: 'Available',
-      description: 'Test your knowledge of programming concepts and algorithms'
-    },
-    {
-      id: 3,
-      title: 'English Proficiency',
-      duration: '45 minutes',
-      questions: 40,
-      difficulty: 'Easy',
-      status: 'Available',
-      description: 'Evaluate your English language skills and comprehension'
-    }
-  ];
+  const [selectedTest, setSelectedTest] = useState(null);
+  const [tests, setTests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchTests = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await apiService.getAvailableTests();
+        // If backend returns { tests: [...] }
+        setTests(data.tests || data || []);
+      } catch (err) {
+        setError('Could not load tests.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTests();
+  }, []);
+
 
   const handleStartTest = (test) => {
     setSelectedTest(test);
-    // Navigate to test page
-    window.location.href = `/test/${test.id}`;
+    // Use test_id if available, else fallback to id
+    const testId = test.test_id || test.id;
+    window.location.href = `/test/${testId}`;
   };
 
   return (
@@ -143,45 +137,50 @@ const DashboardPage = () => {
           
           <div className="p-6">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {sampleTests.map((test) => (
-                <div key={test.id} className="border rounded-lg p-6 hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">{test.title}</h3>
-                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                      {test.status}
-                    </span>
-                  </div>
-                  
-                  <p className="text-gray-600 text-sm mb-4">{test.description}</p>
-                  
-                  <div className="space-y-2 mb-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Duration:</span>
-                      <span className="text-gray-900 font-medium">{test.duration}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Questions:</span>
-                      <span className="text-gray-900 font-medium">{test.questions}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Difficulty:</span>
-                      <span className={`font-medium ${
-                        test.difficulty === 'Easy' ? 'text-green-600' :
-                        test.difficulty === 'Medium' ? 'text-yellow-600' : 'text-red-600'
-                      }`}>
-                        {test.difficulty}
+              {loading ? (
+                <div>Loading tests...</div>
+              ) : error ? (
+                <div className="text-red-500">{error}</div>
+              ) : tests.length === 0 ? (
+                <div>No tests available.</div>
+              ) : (
+                tests.map((test) => (
+                  <div key={test.test_id || test.id} className="border rounded-lg p-6 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">{test.title}</h3>
+                      <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        {test.status || 'Available'}
                       </span>
                     </div>
+                    <p className="text-gray-600 text-sm mb-4">{test.description}</p>
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Duration:</span>
+                        <span className="text-gray-900 font-medium">{test.duration} minutes</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Questions:</span>
+                        <span className="text-gray-900 font-medium">{test.questions ? test.questions.length : test.questions || 0}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Difficulty:</span>
+                        <span className={`font-medium ${
+                          test.difficulty === 'Easy' ? 'text-green-600' :
+                          test.difficulty === 'Medium' ? 'text-yellow-600' : 'text-red-600'
+                        }`}>
+                          {test.difficulty}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleStartTest(test)}
+                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      Start Test
+                    </button>
                   </div>
-                  
-                  <button
-                    onClick={() => handleStartTest(test)}
-                    className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors font-medium"
-                  >
-                    Start Test
-                  </button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

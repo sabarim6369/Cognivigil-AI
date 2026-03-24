@@ -7,9 +7,20 @@ const AdminDashboardPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [tests, setTests] = useState([]);
   const [users, setUsers] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState({
+    total_users: 0,
+    total_tests: 0,
+    total_sessions: 0,
+    average_score: 0,
+    average_risk: 0,
+    high_risk_users: 0
+  });
+  const [recentActivity, setRecentActivity] = useState([]);
   const [showCreateTest, setShowCreateTest] = useState(false);
   const [selectedTest, setSelectedTest] = useState(null);
   const [showTestDetails, setShowTestDetails] = useState(false);
+  const [testDetails, setTestDetails] = useState(null);
+  const [loadingTestDetails, setLoadingTestDetails] = useState(false);
   const [newTest, setNewTest] = useState({
     title: '',
     duration: '',
@@ -50,88 +61,19 @@ const AdminDashboardPage = () => {
       }
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
-      // Fallback to sample data
-      loadSampleData();
+      // Don't load sample data - show empty state instead
+      setTests([]);
+      setUsers([]);
+      setDashboardStats({
+        total_users: 0,
+        total_tests: 0,
+        total_sessions: 0,
+        average_score: 0,
+        average_risk: 0,
+        high_risk_users: 0
+      });
+      setRecentActivity([]);
     }
-  };
-
-  const loadSampleData = () => {
-    // Sample test data
-    setTests([
-      {
-        id: 1,
-        title: 'Mathematics Assessment',
-        duration: 60,
-        questions: 50,
-        difficulty: 'Medium',
-        created: '2024-01-15',
-        status: 'Active',
-        attempts: 45
-      },
-      {
-        id: 2,
-        title: 'Computer Science Fundamentals',
-        duration: 90,
-        questions: 75,
-        difficulty: 'Hard',
-        created: '2024-01-10',
-        status: 'Active',
-        attempts: 32
-      },
-      {
-        id: 3,
-        title: 'English Proficiency',
-        duration: 45,
-        questions: 40,
-        difficulty: 'Easy',
-        created: '2024-01-05',
-        status: 'Inactive',
-        attempts: 28
-      }
-    ]);
-
-    // Sample user data with test results
-    setUsers([
-      {
-        id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
-        totalTests: 8,
-        averageScore: 85,
-        riskLevel: 'Low',
-        lastActive: '2024-01-20 14:30',
-        testHistory: [
-          { testId: 1, testName: 'Mathematics Assessment', score: 92, riskScore: 15, date: '2024-01-20 14:30' },
-          { testId: 2, testName: 'Computer Science Fundamentals', score: 78, riskScore: 35, date: '2024-01-18 10:15' }
-        ]
-      },
-      {
-        id: 2,
-        name: 'Jane Smith',
-        email: 'jane@example.com',
-        totalTests: 12,
-        averageScore: 78,
-        riskLevel: 'Medium',
-        lastActive: '2024-01-19 16:45',
-        testHistory: [
-          { testId: 1, testName: 'Mathematics Assessment', score: 85, riskScore: 25, date: '2024-01-19 16:45' },
-          { testId: 3, testName: 'English Proficiency', score: 71, riskScore: 45, date: '2024-01-17 09:30' }
-        ]
-      },
-      {
-        id: 3,
-        name: 'Mike Johnson',
-        email: 'mike@example.com',
-        totalTests: 5,
-        averageScore: 65,
-        riskLevel: 'High',
-        lastActive: '2024-01-21 11:20',
-        testHistory: [
-          { testId: 2, testName: 'Computer Science Fundamentals', score: 58, riskScore: 78, date: '2024-01-21 11:20' },
-          { testId: 1, testName: 'Mathematics Assessment', score: 72, riskScore: 62, date: '2024-01-16 13:45' }
-        ]
-      }
-    ]);
   };
 
   const handleLogout = () => {
@@ -139,83 +81,56 @@ const AdminDashboardPage = () => {
     navigate('/admin/login');
   };
 
-  const handleCreateTest = (e) => {
+  const handleCreateTest = async (e) => {
     e.preventDefault();
-    const test = {
-      id: tests.length + 1,
-      ...newTest,
-      duration: parseInt(newTest.duration),
-      questions: parseInt(newTest.questions),
-      created: new Date().toISOString().split('T')[0],
-      status: 'Active',
-      attempts: 0
-    };
-    setTests([...tests, test]);
-    setNewTest({
-      title: '',
-      duration: '',
-      questions: '',
-      difficulty: 'Medium',
-      description: ''
-    });
-    setShowCreateTest(false);
-  };
-
-  const handleViewTestDetails = (test) => {
-    setSelectedTest(test);
-    setShowTestDetails(true);
-  };
-
-  const getTestAttendees = (testId) => {
-    const attendees = [];
-    users.forEach(user => {
-      user.testHistory.forEach(test => {
-        if (test.testId === testId) {
-          attendees.push({
-            ...user,
-            testAttempt: test
-          });
-        }
-      });
-    });
-    return attendees;
-  };
-
-  const calculateTestStats = (testId) => {
-    const attendees = getTestAttendees(testId);
-    if (attendees.length === 0) {
-      return {
-        totalAttendees: 0,
-        averageScore: 0,
-        averageRisk: 0,
-        highRiskCount: 0,
-        mediumRiskCount: 0,
-        lowRiskCount: 0,
-        passRate: 0
+    try {
+      // Prepare test data for backend
+      const testPayload = {
+        title: newTest.title,
+        description: newTest.description,
+        duration: parseInt(newTest.duration),
+        difficulty: newTest.difficulty.toLowerCase(),
+        questions: [] // You may want to add a UI for questions later
       };
+      
+      await apiService.createTest(testPayload);
+      
+      // Reload all data from backend
+      await loadInitialData();
+      
+      // Reset form
+      setNewTest({
+        title: '',
+        duration: '',
+        questions: '',
+        difficulty: 'Medium',
+        description: ''
+      });
+      setShowCreateTest(false);
+    } catch (err) {
+      console.error('Failed to create test:', err);
+      alert('Failed to create test. Please try again.');
     }
+  };
 
-    const scores = attendees.map(a => a.testAttempt.score);
-    const risks = attendees.map(a => a.testAttempt.riskScore);
-    
-    const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const averageRisk = risks.reduce((a, b) => a + b, 0) / risks.length;
-    
-    const highRiskCount = risks.filter(r => r > 50).length;
-    const mediumRiskCount = risks.filter(r => r > 25 && r <= 50).length;
-    const lowRiskCount = risks.filter(r => r <= 25).length;
-    
-    const passRate = (scores.filter(s => s >= 70).length / scores.length) * 100;
-
-    return {
-      totalAttendees: attendees.length,
-      averageScore: Math.round(averageScore),
-      averageRisk: Math.round(averageRisk),
-      highRiskCount,
-      mediumRiskCount,
-      lowRiskCount,
-      passRate: Math.round(passRate)
-    };
+  const handleViewTestDetails = async (test) => {
+    try {
+      setSelectedTest(test);
+      setShowTestDetails(true);
+      setLoadingTestDetails(true);
+      
+      // Fetch detailed test information from API
+      const details = await apiService.getTestDetails(test.test_id);
+      setTestDetails(details);
+    } catch (error) {
+      console.error('Failed to load test details:', error);
+      // Still show modal with basic test info
+      setSelectedTest(test);
+      setShowTestDetails(true);
+      setTestDetails(null);
+    } finally {
+      setLoadingTestDetails(false);
+    }
   };
 
   const getRiskLevelColor = (level) => {
@@ -323,7 +238,7 @@ const AdminDashboardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Total Tests</p>
-                    <p className="text-2xl font-bold text-gray-900">{tests.length}</p>
+                    <p className="text-2xl font-bold text-gray-900">{dashboardStats.total_tests}</p>
                   </div>
                   <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                     <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,7 +252,7 @@ const AdminDashboardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Total Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{users.length}</p>
+                    <p className="text-2xl font-bold text-gray-900">{dashboardStats.total_users}</p>
                   </div>
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                     <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -351,7 +266,7 @@ const AdminDashboardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Avg Score</p>
-                    <p className="text-2xl font-bold text-gray-900">76%</p>
+                    <p className="text-2xl font-bold text-gray-900">{dashboardStats.average_score}%</p>
                   </div>
                   <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
                     <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -365,7 +280,7 @@ const AdminDashboardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">High Risk</p>
-                    <p className="text-2xl font-bold text-red-600">1</p>
+                    <p className="text-2xl font-bold text-red-600">{dashboardStats.high_risk_users}</p>
                   </div>
                   <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                     <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -382,29 +297,33 @@ const AdminDashboardPage = () => {
                 <h3 className="text-lg font-semibold text-gray-900">Recent Test Activity</h3>
               </div>
               <div className="p-6">
-                <div className="space-y-4">
-                  {users.map(user => 
-                    user.testHistory.map((test, index) => (
-                      <div key={`${user.id}-${index}`} className="flex items-center justify-between py-3 border-b">
+                {recentActivity.length > 0 ? (
+                  <div className="space-y-4">
+                    {recentActivity.map((activity, index) => (
+                      <div key={index} className="flex items-center justify-between py-3 border-b">
                         <div className="flex items-center space-x-4">
                           <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                            <span className="text-indigo-600 font-semibold">{user.name.charAt(0)}</span>
+                            <span className="text-indigo-600 font-semibold">{activity.user_name?.charAt(0) || 'U'}</span>
                           </div>
                           <div>
-                            <p className="text-gray-900 font-medium">{user.name} - {test.testName}</p>
-                            <p className="text-gray-500 text-sm">Score: {test.score}% • Risk: {test.riskScore}%</p>
+                            <p className="text-gray-900 font-medium">{activity.user_name} - {activity.test_name}</p>
+                            <p className="text-gray-500 text-sm">Score: {activity.score}% • Risk: {activity.risk_score}%</p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`px-2 py-1 text-xs font-medium rounded-full ${getRiskLevelColor(test.riskScore > 50 ? 'High' : test.riskScore > 25 ? 'Medium' : 'Low')}`}>
-                            {test.riskScore > 50 ? 'High Risk' : test.riskScore > 25 ? 'Medium Risk' : 'Low Risk'}
+                          <div className={`px-2 py-1 text-xs font-medium rounded-full ${getRiskLevelColor(activity.risk_score > 50 ? 'High' : activity.risk_score > 25 ? 'Medium' : 'Low')}`}>
+                            {activity.risk_score > 50 ? 'High Risk' : activity.risk_score > 25 ? 'Medium Risk' : 'Low Risk'}
                           </div>
-                          <p className="text-gray-500 text-sm mt-1">{test.date}</p>
+                          <p className="text-gray-500 text-sm mt-1">{new Date(activity.date).toLocaleDateString()}</p>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No recent activity found</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -505,56 +424,74 @@ const AdminDashboardPage = () => {
             {/* Tests List */}
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Test Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Questions</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Difficulty</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {tests.map((test) => (
-                      <tr key={test.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{test.title}</div>
-                            <div className="text-sm text-gray-500">Created: {test.created}</div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.duration} min</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.questions}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(test.difficulty)}`}>
-                            {test.difficulty}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.attempts}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            test.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {test.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button 
-                            onClick={() => handleViewTestDetails(test)}
-                            className="text-indigo-600 hover:text-indigo-900 mr-3"
-                          >
-                            View Details
-                          </button>
-                          <button className="text-gray-600 hover:text-gray-900 mr-3">Edit</button>
-                          <button className="text-red-600 hover:text-red-900">Delete</button>
-                        </td>
+                {tests.length > 0 ? (
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Test Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Questions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Difficulty</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {tests.map((test) => (
+                        <tr key={test.test_id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{test.title}</div>
+                              <div className="text-sm text-gray-500">Created: {new Date(test.created_at).toLocaleDateString()}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.duration} min</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.questions_count || test.questions?.length || 0}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(test.difficulty)}`}>
+                              {test.difficulty}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{test.attempts || 0}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              test.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {test.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button 
+                              onClick={() => handleViewTestDetails(test)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-3"
+                            >
+                              View Details
+                            </button>
+                            <button className="text-gray-600 hover:text-gray-900 mr-3">Edit</button>
+                            <button className="text-red-600 hover:text-red-900">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No tests created</h3>
+                    <p className="text-gray-500 mb-4">Get started by creating your first test.</p>
+                    <button
+                      onClick={() => setShowCreateTest(true)}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
+                    >
+                      Create New Test
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -567,54 +504,68 @@ const AdminDashboardPage = () => {
             
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Tests</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Score</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Level</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((user) => (
-                      <tr key={user.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                              <span className="text-indigo-600 font-semibold">{user.name.charAt(0)}</span>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                              <div className="text-sm text-gray-500">{user.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.totalTests}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.averageScore}%</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRiskLevelColor(user.riskLevel)}`}>
-                            {user.riskLevel}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.lastActive}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button 
-                            onClick={() => {
-                              // Show user details modal
-                              alert(`User Details:\n\nName: ${user.name}\nEmail: ${user.email}\nTotal Tests: ${user.totalTests}\nAverage Score: ${user.averageScore}%\nRisk Level: ${user.riskLevel}\n\nTest History:\n${user.testHistory.map(t => `- ${t.testName}: ${t.score}% (Risk: ${t.riskScore}%)`).join('\n')}`);
-                            }}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            View Details
-                          </button>
-                        </td>
+                {users.length > 0 ? (
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Tests</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Score</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Risk Level</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {users.map((user) => (
+                        <tr key={user.user_id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                <span className="text-indigo-600 font-semibold">{user.name?.charAt(0) || 'U'}</span>
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.total_tests || 0}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.average_score || 0}%</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRiskLevelColor(user.risk_level)}`}>
+                              {user.risk_level || 'Low'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {user.last_active ? new Date(user.last_active).toLocaleDateString() : 'Never'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button 
+                              onClick={() => {
+                                // Show user details modal
+                                alert(`User Details:\n\nName: ${user.name}\nEmail: ${user.email}\nTotal Tests: ${user.total_tests || 0}\nAverage Score: ${user.average_score || 0}%\nRisk Level: ${user.risk_level || 'Low'}`);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No users registered</h3>
+                    <p className="text-gray-500">Users will appear here once they register for the system.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -711,151 +662,157 @@ const AdminDashboardPage = () => {
               </div>
 
               <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-                {/* Test Statistics */}
-                <div className="mb-8">
-                  <h4 className="text-lg font-semibold mb-4">Test Statistics</h4>
-                  <div className="grid md:grid-cols-4 gap-4">
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {calculateTestStats(selectedTest.id).totalAttendees}
-                      </div>
-                      <div className="text-sm text-gray-600">Total Attendees</div>
-                    </div>
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {calculateTestStats(selectedTest.id).averageScore}%
-                      </div>
-                      <div className="text-sm text-gray-600">Average Score</div>
-                    </div>
-                    <div className="bg-yellow-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {calculateTestStats(selectedTest.id).averageRisk}%
-                      </div>
-                      <div className="text-sm text-gray-600">Average Risk</div>
-                    </div>
-                    <div className="bg-purple-50 p-4 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {calculateTestStats(selectedTest.id).passRate}%
-                      </div>
-                      <div className="text-sm text-gray-600">Pass Rate</div>
-                    </div>
+                {loadingTestDetails ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    <span className="ml-3 text-gray-600">Loading test details...</span>
                   </div>
-                </div>
+                ) : testDetails ? (
+                  <>
+                    {/* Test Statistics */}
+                    <div className="mb-8">
+                      <h4 className="text-lg font-semibold mb-4">Test Statistics</h4>
+                      <div className="grid md:grid-cols-4 gap-4">
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                          <div className="text-2xl font-bold text-blue-600">
+                            {testDetails?.stats?.total_attendees || 0}
+                          </div>
+                          <div className="text-sm text-gray-600">Total Attendees</div>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg">
+                          <div className="text-2xl font-bold text-green-600">
+                            {testDetails?.stats?.average_score || 0}%
+                          </div>
+                          <div className="text-sm text-gray-600">Average Score</div>
+                        </div>
+                        <div className="bg-yellow-50 p-4 rounded-lg">
+                          <div className="text-2xl font-bold text-yellow-600">
+                            {testDetails?.stats?.average_risk || 0}%
+                          </div>
+                          <div className="text-sm text-gray-600">Average Risk</div>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg">
+                          <div className="text-2xl font-bold text-purple-600">
+                            {testDetails?.stats?.pass_rate || 0}%
+                          </div>
+                          <div className="text-sm text-gray-600">Pass Rate</div>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Risk Distribution */}
-                <div className="mb-8">
-                  <h4 className="text-lg font-semibold mb-4">Risk Distribution</h4>
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div className="bg-green-100 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-green-700">
-                        {calculateTestStats(selectedTest.id).lowRiskCount}
+                    {/* Risk Distribution */}
+                    <div className="mb-8">
+                      <h4 className="text-lg font-semibold mb-4">Risk Distribution</h4>
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="bg-green-100 p-4 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-green-700">
+                            {testDetails?.stats?.low_risk_count || 0}
+                          </div>
+                          <div className="text-sm text-green-600">Low Risk (0-25%)</div>
+                        </div>
+                        <div className="bg-yellow-100 p-4 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-yellow-700">
+                            {testDetails?.stats?.medium_risk_count || 0}
+                          </div>
+                          <div className="text-sm text-yellow-600">Medium Risk (26-50%)</div>
+                        </div>
+                        <div className="bg-red-100 p-4 rounded-lg text-center">
+                          <div className="text-2xl font-bold text-red-700">
+                            {testDetails?.stats?.high_risk_count || 0}
+                          </div>
+                          <div className="text-sm text-red-600">High Risk (51-100%)</div>
+                        </div>
                       </div>
-                      <div className="text-sm text-green-600">Low Risk (0-25%)</div>
                     </div>
-                    <div className="bg-yellow-100 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-yellow-700">
-                        {calculateTestStats(selectedTest.id).mediumRiskCount}
-                      </div>
-                      <div className="text-sm text-yellow-600">Medium Risk (26-50%)</div>
-                    </div>
-                    <div className="bg-red-100 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-red-700">
-                        {calculateTestStats(selectedTest.id).highRiskCount}
-                      </div>
-                      <div className="text-sm text-red-600">High Risk (51-100%)</div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Attendees List */}
-                <div>
-                  <h4 className="text-lg font-semibold mb-4">User Performance Details</h4>
-                  <div className="bg-white border rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk Score</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk Level</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {getTestAttendees(selectedTest.id).length === 0 ? (
-                            <tr>
-                              <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
-                                No users have attended this test yet
-                              </td>
-                            </tr>
-                          ) : (
-                            getTestAttendees(selectedTest.id).map((attendee) => (
-                              <tr key={`${attendee.id}-${attendee.testAttempt.date}`}>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
-                                      <span className="text-indigo-600 text-sm font-semibold">{attendee.name.charAt(0)}</span>
-                                    </div>
-                                    <div className="text-sm font-medium text-gray-900">{attendee.name}</div>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{attendee.email}</td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className={`text-sm font-medium ${
-                                      attendee.testAttempt.score >= 70 ? 'text-green-600' : 
-                                      attendee.testAttempt.score >= 50 ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>
-                                      {attendee.testAttempt.score}%
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center">
-                                    <span className={`text-sm font-medium ${
-                                      attendee.testAttempt.riskScore <= 25 ? 'text-green-600' : 
-                                      attendee.testAttempt.riskScore <= 50 ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>
-                                      {attendee.testAttempt.riskScore}%
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                    attendee.testAttempt.riskScore <= 25 ? 'bg-green-100 text-green-800' :
-                                    attendee.testAttempt.riskScore <= 50 ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {attendee.testAttempt.riskScore <= 25 ? 'Low' :
-                                     attendee.testAttempt.riskScore <= 50 ? 'Medium' : 'High'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                  {attendee.testAttempt.date}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                    attendee.testAttempt.score >= 70 ? 'bg-green-100 text-green-800' :
-                                    attendee.testAttempt.score >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {attendee.testAttempt.score >= 70 ? 'Passed' :
-                                     attendee.testAttempt.score >= 50 ? 'Borderline' : 'Failed'}
-                                  </span>
-                                </td>
+                    {/* Attendees List */}
+                    <div>
+                      <h4 className="text-lg font-semibold mb-4">User Performance Details</h4>
+                      <div className="bg-white border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk Score</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk Level</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {testDetails?.attendees?.length === 0 ? (
+                                <tr>
+                                  <td colSpan="7" className="px-4 py-8 text-center text-gray-500">
+                                    No users have attended this test yet
+                                  </td>
+                                </tr>
+                              ) : (
+                                testDetails?.attendees?.map((attendee) => (
+                                  <tr key={`${attendee.user_id}-${attendee.date}`}>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <div className="flex items-center">
+                                        <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+                                          <span className="text-indigo-600 text-sm font-semibold">{attendee.name?.charAt(0) || 'U'}</span>
+                                        </div>
+                                        <div className="text-sm font-medium text-gray-900">{attendee.name}</div>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{attendee.email}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <div className="flex items-center">
+                                        <span className={`text-sm font-medium ${
+                                          attendee.score >= 70 ? 'text-green-600' : 
+                                          attendee.score >= 50 ? 'text-yellow-600' : 'text-red-600'
+                                        }`}>
+                                          {attendee.score}%
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <div className="flex items-center">
+                                        <span className={`text-sm font-medium ${
+                                          attendee.risk_score <= 25 ? 'text-green-600' : 
+                                          attendee.risk_score <= 50 ? 'text-yellow-600' : 'text-red-600'
+                                        }`}>
+                                          {attendee.risk_score}%
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${getRiskLevelColor(attendee.risk_level)}`}>
+                                        {attendee.risk_level}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                      {new Date(attendee.date).toLocaleDateString()}
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                        attendee.status === 'Passed' ? 'bg-green-100 text-green-800' : 
+                                        attendee.status === 'Borderline' ? 'bg-yellow-100 text-yellow-800' : 
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {attendee.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No test details available</p>
                   </div>
-                </div>
-
-                {/* Performance Summary Chart */}
+                )}
+              </div>   {/* Performance Summary Chart */}
                 <div className="mt-8">
                   <h4 className="text-lg font-semibold mb-4">Performance Summary</h4>
                   <div className="grid md:grid-cols-2 gap-6">
@@ -899,29 +856,28 @@ const AdminDashboardPage = () => {
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">Low Risk Users</span>
                           <div className="flex-1 mx-4 bg-gray-200 rounded-full h-2">
-                            <div className="bg-green-500 h-2 rounded-full" style={{width: `${(calculateTestStats(selectedTest.id).lowRiskCount / calculateTestStats(selectedTest.id).totalAttendees) * 100}%`}}></div>
+                            <div className="bg-green-500 h-2 rounded-full" style={{width: '0%'}}></div>
                           </div>
-                          <span className="text-sm font-medium">{calculateTestStats(selectedTest.id).lowRiskCount}</span>
+                          <span className="text-sm font-medium">{testDetails?.stats?.low_risk_count || 0}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">Medium Risk Users</span>
                           <div className="flex-1 mx-4 bg-gray-200 rounded-full h-2">
-                            <div className="bg-yellow-500 h-2 rounded-full" style={{width: `${(calculateTestStats(selectedTest.id).mediumRiskCount / calculateTestStats(selectedTest.id).totalAttendees) * 100}%`}}></div>
+                            <div className="bg-yellow-500 h-2 rounded-full" style={{width: '0%'}}></div>
                           </div>
-                          <span className="text-sm font-medium">{calculateTestStats(selectedTest.id).mediumRiskCount}</span>
+                          <span className="text-sm font-medium">{testDetails?.stats?.medium_risk_count || 0}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">High Risk Users</span>
                           <div className="flex-1 mx-4 bg-gray-200 rounded-full h-2">
-                            <div className="bg-red-500 h-2 rounded-full" style={{width: `${(calculateTestStats(selectedTest.id).highRiskCount / calculateTestStats(selectedTest.id).totalAttendees) * 100}%`}}></div>
+                            <div className="bg-red-500 h-2 rounded-full" style={{width: '0%'}}></div>
                           </div>
-                          <span className="text-sm font-medium">{calculateTestStats(selectedTest.id).highRiskCount}</span>
+                          <span className="text-sm font-medium">{testDetails?.stats?.high_risk_count || 0}</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
             </div>
           </div>
         )}

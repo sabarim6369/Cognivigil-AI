@@ -24,8 +24,6 @@ class Database:
     @classmethod
     async def get_database(cls):
         """Get database instance"""
-        if not cls.database:
-            await cls.connect_to_mongo()
         return cls.database
 
     @classmethod

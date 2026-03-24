@@ -40,7 +40,7 @@ async def admin_login(credentials: AdminLogin):
         )
 
 
-@router.post("/tests", response_model=TestResponse)
+@router.post("/tests")
 async def create_test(test_data: TestCreate, current_user = Depends(get_admin_user)):
     """Create a new test"""
     try:
@@ -71,18 +71,25 @@ async def create_test(test_data: TestCreate, current_user = Depends(get_admin_us
         
         await db.tests.insert_one(test_doc)
         
-        return TestResponse(
-            test_id=test_id,
-            title=test_data.title,
-            description=test_data.description,
-            duration=test_data.duration,
-            difficulty=test_data.difficulty,
-            questions=test_data.questions,
-            status="active",
-            attempts=0,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
+        # Return simple dict instead of Pydantic model
+        return {
+            "test_id": test_id,
+            "title": test_data.title,
+            "description": test_data.description,
+            "duration": test_data.duration,
+            "difficulty": test_data.difficulty.value,
+            "questions": [
+                {
+                    "question": q.question,
+                    "options": q.options,
+                    "correct_answer": q.correct_answer
+                } for q in test_data.questions
+            ],
+            "status": "active",
+            "attempts": 0,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
         
     except Exception as e:
         print(f"❌ Error creating test: {e}")
@@ -100,7 +107,18 @@ async def get_all_tests(current_user = Depends(get_admin_user)):
         
         tests = await db.tests.find().sort("created_at", -1).to_list(length=None)
         
-        return {"tests": tests, "total_count": len(tests)}
+        # Convert ObjectId to string for JSON serialization and handle missing fields
+        formatted_tests = []
+        for test in tests:
+            formatted_test = {}
+            for key, value in test.items():
+                if key == "_id":
+                    formatted_test["_id"] = str(value)
+                else:
+                    formatted_test[key] = value
+            formatted_tests.append(formatted_test)
+        
+        return {"tests": formatted_tests, "total_count": len(formatted_tests)}
         
     except Exception as e:
         print(f"❌ Error getting tests: {e}")
@@ -122,6 +140,10 @@ async def get_test(test_id: str, current_user = Depends(get_admin_user)):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Test not found"
             )
+        
+        # Convert ObjectId to string for JSON serialization
+        if "_id" in test:
+            test["_id"] = str(test["_id"])
         
         return test
         
@@ -262,7 +284,20 @@ async def get_all_users(current_user = Depends(get_admin_user)):
         
         users = await db.users.find().sort("created_at", -1).to_list(length=None)
         
-        return {"users": users, "total_count": len(users)}
+        # Convert ObjectId to string for JSON serialization and handle missing fields
+        formatted_users = []
+        for user in users:
+            formatted_user = {}
+            for key, value in user.items():
+                if key == "_id":
+                    formatted_user["_id"] = str(value)
+                elif key in ["user_id", "name", "email", "total_tests", "average_score", "risk_level", "last_active", "created_at"]:
+                    formatted_user[key] = value
+                else:
+                    formatted_user[key] = value
+            formatted_users.append(formatted_user)
+        
+        return {"users": formatted_users, "total_count": len(formatted_users)}
         
     except Exception as e:
         print(f"❌ Error getting users: {e}")
@@ -341,13 +376,24 @@ async def get_dashboard_overview(current_user = Depends(get_admin_user)):
             test = await db.tests.find_one({"test_id": session["test_id"]})
             
             if user and test:
-                recent_activity.append({
-                    "user_name": user["name"],
-                    "test_name": test["title"],
-                    "score": session["final_score"],
-                    "risk_score": session["final_risk_score"],
-                    "date": session["start_time"]
-                })
+                # Convert ObjectIds to strings for JSON serialization
+                session_data = {
+                    "user_name": user.get("name", "Unknown"),
+                    "test_name": test.get("title", "Unknown Test"),
+                    "score": session.get("final_score", 0),
+                    "risk_score": session.get("final_risk_score", 0),
+                    "date": session.get("start_time", "")
+                }
+                
+                # Add string IDs if available
+                if "_id" in session:
+                    session_data["session_id"] = str(session["_id"])
+                if "_id" in user:
+                    session_data["user_id"] = str(user["_id"])
+                if "_id" in test:
+                    session_data["test_id"] = str(test["_id"])
+                
+                recent_activity.append(session_data)
         
         return {
             "stats": stats,
