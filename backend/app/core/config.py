@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin123"
     
-    # AI Model Configuration (removed since we use AI Engine)
+    # AI Engine Configuration
+    ai_engine_url: str = "http://localhost:8001"
     detection_confidence_threshold: float = 0.5
     risk_threshold_high: int = 75
     risk_threshold_medium: int = 50

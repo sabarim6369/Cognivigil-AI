@@ -6,7 +6,7 @@ import os
 from app.core.config import settings
 from app.models.database import database
 from app.services.detection_service import detection_service
-from app.api.routes import health, detect, session, admin, tests, users
+from app.api.routes import health, detect, session, admin, tests
 
 # Create evidence directory if it doesn't exist
 os.makedirs(settings.evidence_storage_path, exist_ok=True)
@@ -60,7 +60,6 @@ app.include_router(detect.router, prefix="/api/v1", tags=["Detection"])
 app.include_router(session.router, prefix="/api/v1/sessions", tags=["Sessions"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(tests.router, prefix="/api/v1/tests", tags=["Tests"])
-app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 
 
 # Root endpoint
@@ -87,15 +86,21 @@ async def health_check_simple():
         except Exception:
             pass
         
-        # Check AI models
-        ai_models_loaded = detection_service.yolo_model is not None
+        # Check AI Engine connection
+        ai_engine_available = False
+        try:
+            import requests
+            response = requests.get(f"{settings.ai_engine_url}/health", timeout=2)
+            ai_engine_available = response.status_code == 200
+        except:
+            pass
         
-        status = "healthy" if db_connected else "unhealthy"
+        status = "healthy" if db_connected and ai_engine_available else "unhealthy"
         
         return {
             "status": status,
             "database_connected": db_connected,
-            "ai_models_loaded": ai_models_loaded,
+            "ai_engine_available": ai_engine_available,
             "version": settings.app_version
         }
     
