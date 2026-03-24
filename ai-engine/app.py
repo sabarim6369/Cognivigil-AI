@@ -1,14 +1,58 @@
+import cv2
+import numpy as np
 import base64
-import requests
 from datetime import datetime
 from typing import List, Dict, Any
-from app.core.config import settings
-from app.models.schemas import DetectionResult, FrameProcessResponse, EventType
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from ultralytics import YOLO
+import mediapipe as mp
+from fastapi.middleware.cors import CORSMiddleware
 
 
-class DetectionService:
+# Pydantic models
+class DetectionRequest(BaseModel):
+    frame: str
+    session_id: str
+    timestamp: str
+
+
+class DetectionResult(BaseModel):
+    class_name: str
+    confidence: float
+    bbox: List[float]
+    center: List[float]
+
+
+class DetectionResponse(BaseModel):
+    detections: List[DetectionResult]
+    risk_score: int
+    alerts: List[Dict[str, Any]]
+    processed_at: str
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="AI Engine",
+    description="AI processing service for Cognivigil",
+    version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class AIEngineService:
     def __init__(self):
-        self.ai_engine_url = "http://localhost:8001"  # AI Engine microservice
+        self.yolo_model = None
+        self.face_mesh = None
+        self.target_classes = ['person', 'cell phone', 'book', 'laptop', 'mouse']
         self.risk_weights = {
             'cell phone': 50,
             'multiple_persons': 70,
@@ -16,79 +60,30 @@ class DetectionService:
             'looking_away': 10,
             'suspicious_object': 20
         }
+        self.models_loaded = False
         
-    async def initialize_models(self):
-        """Check if AI Engine is available"""
+    def initialize_models(self):
+        """Initialize AI models"""
         try:
-            response = requests.get(f"{self.ai_engine_url}/health", timeout=5)
-            if response.status_code == 200:
-                print("✅ AI Engine service is available")
-                return True
-            else:
-                print("❌ AI Engine service is not healthy")
-                return False
+            # Initialize YOLO model
+            self.yolo_model = YOLO("models/yolov8n.pt")
+            
+            # Initialize MediaPipe Face Mesh
+            self.face_mesh = mp.solutions.face_mesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+            
+            self.models_loaded = True
+            print("✅ AI models initialized successfully")
+            return True
         except Exception as e:
-            print(f"❌ AI Engine service not available: {e}")
-            print("   Please start the AI Engine service on port 8001")
+            print(f"❌ Error initializing AI models: {e}")
             return False
     
-    async def process_frame(self, frame_data: str, session_id: str) -> FrameProcessResponse:
-        """Process a single frame and return detection results"""
-        try:
-            # Send frame to AI Engine service
-            payload = {
-                "frame": frame_data,
-                "session_id": session_id,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
-            response = requests.post(
-                f"{self.ai_engine_url}/detect",
-                json=payload,
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                
-                # Convert AI Engine response to our format
-                detections = [
-                    DetectionResult(
-                        class_name=d["class_name"],
-                        confidence=d["confidence"],
-                        bbox=d["bbox"],
-                        center=d["center"]
-                    ) for d in result.get("detections", [])
-                ]
-                
-                return FrameProcessResponse(
-                    detections=detections,
-                    risk_score=result.get("risk_score", 0),
-                    alerts=result.get("alerts", []),
-                    processed_at=datetime.utcnow()
-                )
-            else:
-                print(f"❌ AI Engine returned error: {response.status_code}")
-                # Return dummy response
-                return FrameProcessResponse(
-                    detections=[],
-                    risk_score=0,
-                    alerts=[],
-                    processed_at=datetime.utcnow()
-                )
-            
-        except Exception as e:
-            print(f"❌ Error processing frame: {e}")
-            print("   Falling back to dummy response")
-            # Return dummy response for demo
-            return FrameProcessResponse(
-                detections=[],
-                risk_score=0,
-                alerts=[],
-                processed_at=datetime.utcnow()
-            )
-    
-    def _decode_frame(self, frame_data: str) -> np.ndarray:
+    def decode_frame(self, frame_data: str) -> np.ndarray:
         """Decode base64 frame to numpy array"""
         try:
             # Remove data URL prefix if present
@@ -108,13 +103,13 @@ class DetectionService:
             # Return dummy frame for demo
             return np.zeros((480, 640, 3), dtype=np.uint8)
     
-    async def _detect_objects(self, frame: np.ndarray) -> List[DetectionResult]:
+    def detect_objects(self, frame: np.ndarray) -> List[DetectionResult]:
         """Detect objects using YOLO"""
         try:
-            if self.yolo_model is None:
+            if not self.models_loaded or self.yolo_model is None:
                 return []
             
-            results = self.yolo_model(frame, conf=settings.detection_confidence_threshold)
+            results = self.yolo_model(frame, conf=0.5)
             detections = []
             
             for result in results:
@@ -132,7 +127,7 @@ class DetectionService:
                                 class_name=class_name,
                                 confidence=confidence,
                                 bbox=bbox,
-                                center=self._get_bbox_center(bbox)
+                                center=self.get_bbox_center(bbox)
                             ))
             
             return detections
@@ -141,10 +136,10 @@ class DetectionService:
             print(f"❌ Error in object detection: {e}")
             return []
     
-    async def _analyze_face(self, frame: np.ndarray) -> Dict[str, Any]:
+    def analyze_face(self, frame: np.ndarray) -> Dict[str, Any]:
         """Analyze face using MediaPipe"""
         try:
-            if self.face_mesh is None:
+            if not self.models_loaded or self.face_mesh is None:
                 return {"face_detected": False, "looking_away": False}
             
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -153,12 +148,7 @@ class DetectionService:
             if results.multi_face_landmarks:
                 # Face detected
                 landmarks = results.multi_face_landmarks[0]
-                
-                # Check if looking away (simplified - using nose position)
-                nose_tip = landmarks.landmark[1]  # Nose tip
-                face_center = landmarks.landmark[1]  # Use nose as center
-                
-                looking_away = self._check_looking_away(landmarks)
+                looking_away = self.check_looking_away(landmarks)
                 
                 return {
                     "face_detected": True,
@@ -172,17 +162,14 @@ class DetectionService:
             print(f"❌ Error in face analysis: {e}")
             return {"face_detected": False, "looking_away": False}
     
-    def _get_bbox_center(self, bbox: List[float]) -> List[float]:
+    def get_bbox_center(self, bbox: List[float]) -> List[float]:
         """Calculate center point of bounding box"""
         x1, y1, x2, y2 = bbox
         return [(x1 + x2) / 2, (y1 + y2) / 2]
     
-    def _check_looking_away(self, landmarks) -> bool:
+    def check_looking_away(self, landmarks) -> bool:
         """Check if person is looking away from camera"""
         try:
-            # Simplified gaze estimation using face landmarks
-            # This is a basic implementation - in production, you'd want more sophisticated gaze tracking
-            
             # Get eye landmarks
             left_eye = landmarks.landmark[33]  # Left eye corner
             right_eye = landmarks.landmark[263]  # Right eye corner
@@ -190,7 +177,6 @@ class DetectionService:
             
             # Calculate eye center
             eye_center_x = (left_eye.x + right_eye.x) / 2
-            eye_center_y = (left_eye.y + right_eye.y) / 2
             
             # Check if nose is significantly offset from eye center
             nose_offset = abs(nose.x - eye_center_x)
@@ -201,11 +187,10 @@ class DetectionService:
         except Exception:
             return False
     
-    async def _calculate_risk_score(
+    def calculate_risk_score(
         self, 
         detections: List[DetectionResult], 
-        face_analysis: Dict[str, Any], 
-        session_id: str
+        face_analysis: Dict[str, Any]
     ) -> tuple[int, List[Dict[str, Any]]]:
         """Calculate risk score and generate alerts"""
         risk_score = 0
@@ -216,7 +201,7 @@ class DetectionService:
         if phones:
             risk_score += self.risk_weights['cell phone']
             alerts.append({
-                "type": EventType.PHONE_DETECTED,
+                "type": "phone_detected",
                 "message": "Phone detected",
                 "confidence": max(p.confidence for p in phones),
                 "severity": "high"
@@ -227,7 +212,7 @@ class DetectionService:
         if len(persons) > 1:
             risk_score += self.risk_weights['multiple_persons']
             alerts.append({
-                "type": EventType.MULTIPLE_PERSONS,
+                "type": "multiple_persons",
                 "message": f"Multiple persons detected: {len(persons)}",
                 "confidence": 0.8,
                 "severity": "high"
@@ -237,7 +222,7 @@ class DetectionService:
         if not face_analysis.get("face_detected"):
             risk_score += self.risk_weights['face_absence']
             alerts.append({
-                "type": EventType.FACE_ABSENCE,
+                "type": "face_absence",
                 "message": "Face not detected",
                 "confidence": 0.9,
                 "severity": "medium"
@@ -247,7 +232,7 @@ class DetectionService:
         if face_analysis.get("looking_away"):
             risk_score += self.risk_weights['looking_away']
             alerts.append({
-                "type": EventType.LOOKING_AWAY,
+                "type": "looking_away",
                 "message": "Looking away from screen",
                 "confidence": 0.7,
                 "severity": "low"
@@ -258,7 +243,7 @@ class DetectionService:
         if suspicious_objects:
             risk_score += self.risk_weights['suspicious_object']
             alerts.append({
-                "type": EventType.SUSPICIOUS_OBJECT,
+                "type": "suspicious_object",
                 "message": f"Suspicious object detected: {suspicious_objects[0].class_name}",
                 "confidence": suspicious_objects[0].confidence,
                 "severity": "medium"
@@ -267,5 +252,52 @@ class DetectionService:
         return risk_score, alerts
 
 
-# Global detection service instance
-detection_service = DetectionService()
+# Initialize AI service
+ai_service = AIEngineService()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize AI models on startup"""
+    ai_service.initialize_models()
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "models_loaded": ai_service.models_loaded,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.post("/detect", response_model=DetectionResponse)
+async def detect_objects(request: DetectionRequest):
+    """Process frame for object detection and risk assessment"""
+    try:
+        # Decode frame
+        frame = ai_service.decode_frame(request.frame)
+        
+        # Run detections
+        detections = ai_service.detect_objects(frame)
+        face_analysis = ai_service.analyze_face(frame)
+        
+        # Calculate risk score and alerts
+        risk_score, alerts = ai_service.calculate_risk_score(detections, face_analysis)
+        
+        return DetectionResponse(
+            detections=detections,
+            risk_score=risk_score,
+            alerts=alerts,
+            processed_at=datetime.utcnow().isoformat()
+        )
+        
+    except Exception as e:
+        print(f"❌ Error in detection: {e}")
+        raise HTTPException(status_code=500, detail="Detection failed")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001, reload=True)

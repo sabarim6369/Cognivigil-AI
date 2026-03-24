@@ -17,8 +17,7 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin123"
     
-    # AI Model Configuration
-    yolo_model_path: str = "../ai-engine/models/yolov8n.pt"
+    # AI Model Configuration (removed since we use AI Engine)
     detection_confidence_threshold: float = 0.5
     risk_threshold_high: int = 75
     risk_threshold_medium: int = 50
@@ -35,9 +34,10 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = True
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False
+    }
 
 
 settings = Settings()

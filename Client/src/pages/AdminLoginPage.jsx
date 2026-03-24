@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import apiService from '../services/api';
 
 const AdminLoginPage = () => {
   const [credentials, setCredentials] = useState({
@@ -23,21 +24,20 @@ const AdminLoginPage = () => {
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
 
-    // Simulate authentication
-    setTimeout(() => {
-      if (credentials.username === defaultCredentials.username && 
-          credentials.password === defaultCredentials.password) {
-        localStorage.setItem('isAdminAuthenticated', 'true');
-        navigate('/admin/dashboard');
-      } else {
-        setError('Invalid credentials. Please try again.');
-      }
+    try {
+      await apiService.adminLogin(credentials);
+      localStorage.setItem('isAdminAuthenticated', 'true');
+      navigate('/admin/dashboard');
+    } catch (error) {
+      setError('Invalid credentials. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const fillDefaultCredentials = () => {

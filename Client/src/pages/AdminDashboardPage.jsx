@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import apiService from '../services/api';
 
 const AdminDashboardPage = () => {
   const navigate = useNavigate();
@@ -17,16 +18,44 @@ const AdminDashboardPage = () => {
     description: ''
   });
 
-  // Check authentication
+  // Check authentication and load data
   useEffect(() => {
     const isAuthenticated = localStorage.getItem('isAdminAuthenticated');
     if (!isAuthenticated) {
       navigate('/admin/login');
+      return;
     }
     loadInitialData();
   }, [navigate]);
 
-  const loadInitialData = () => {
+  const loadInitialData = async () => {
+    try {
+      // Load dashboard data from API
+      const [testsData, usersData, overviewData] = await Promise.all([
+        apiService.getAllTests(),
+        apiService.getAllUsers(),
+        apiService.getDashboardOverview()
+      ]);
+
+      setTests(testsData.tests || []);
+      setUsers(usersData.users || []);
+      
+      // Transform overview data if needed
+      if (overviewData.stats) {
+        setDashboardStats(overviewData.stats);
+      }
+      
+      if (overviewData.recent_activity) {
+        setRecentActivity(overviewData.recent_activity);
+      }
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      // Fallback to sample data
+      loadSampleData();
+    }
+  };
+
+  const loadSampleData = () => {
     // Sample test data
     setTests([
       {
