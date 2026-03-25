@@ -61,14 +61,30 @@ class DetectionService:
                     ) for d in result.get("detections", [])
                 ]
                 
+                # Handle alerts from AI engine (format may vary)
+                alerts = []
+                ai_alerts = result.get("alerts", [])
+                if ai_alerts:
+                    for alert in ai_alerts:
+                        alerts.append({
+                            "type": alert.get("type", "unknown"),
+                            "message": alert.get("message", "Suspicious activity detected"),
+                            "confidence": alert.get("confidence", 0.5),
+                            "severity": alert.get("severity", "medium")
+                        })
+                
+                # Get risk score from AI engine response
+                risk_score = result.get("risk_score", 0)
+                
                 return FrameProcessResponse(
                     detections=detections,
-                    risk_score=result.get("risk_assessment", {}).get("total_score", 0),
-                    alerts=result.get("behavior_events", []),
+                    risk_score=risk_score,
+                    alerts=alerts,
                     processed_at=datetime.utcnow()
                 )
             else:
                 print(f"❌ AI Engine returned error: {response.status_code}")
+                print(f"Response: {response.text}")
                 # Return dummy response
                 return FrameProcessResponse(
                     detections=[],

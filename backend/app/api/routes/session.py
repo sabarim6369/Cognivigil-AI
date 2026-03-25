@@ -8,6 +8,101 @@ from app.services.scoring_service import scoring_service
 router = APIRouter()
 
 
+@router.post("/create", response_model=SessionResponse)
+async def create_session(session_data: dict):
+    """Create a new exam session (simplified for demo)"""
+    try:
+        db = await database.get_database()
+        
+        # For demo purposes, create user and test if they don't exist
+        user = await db.users.find_one({"user_id": session_data.get("user_id", "demo_user")})
+        if not user:
+            # Create demo user
+            user_doc = {
+                "user_id": session_data.get("user_id", "demo_user"),
+                "email": "demo@example.com",
+                "name": "Demo User",
+                "created_at": datetime.utcnow(),
+                "total_tests_taken": 0,
+                "average_score": 0.0,
+                "average_risk_score": 0.0
+            }
+            await db.users.insert_one(user_doc)
+        
+        test = await db.tests.find_one({"test_id": session_data.get("test_id", "1")})
+        if not test:
+            # Create demo test
+            test_doc = {
+                "test_id": session_data.get("test_id", "1"),
+                "title": "Demo Test",
+                "duration_minutes": 60,
+                "total_questions": 3,
+                "created_at": datetime.utcnow(),
+                "total_attempts": 0,
+                "average_score": 0.0,
+                "average_risk_score": 0.0
+            }
+            await db.tests.insert_one(test_doc)
+        
+        # Use provided session_id or generate one
+        session_id = session_data.get("session_id")
+        if not session_id:
+            session_id = f"session_{uuid.uuid4().hex[:8]}"
+        
+        # Create session document
+        session_doc = {
+            "session_id": session_id,
+            "user_id": session_data.get("user_id", "demo_user"),
+            "test_id": session_data.get("test_id", "1"),
+            "start_time": session_data.get("start_time", datetime.utcnow()),
+            "end_time": None,
+            "final_score": None,
+            "final_risk_score": None,
+            "current_risk_score": 0,
+            "status": session_data.get("status", "active"),
+            "created_at": datetime.utcnow(),
+            "last_frame_processed": None
+        }
+        
+        await db.sessions.insert_one(session_doc)
+        
+        # Create test started event
+        event_doc = {
+            "event_id": f"event_{datetime.utcnow().timestamp()}",
+            "session_id": session_id,
+            "event_type": "test_started",
+            "timestamp": session_data.get("start_time", datetime.utcnow()),
+            "confidence": 1.0,
+            "risk_score_impact": 0,
+            "description": "Test session started",
+            "metadata": {
+                "user_id": session_data.get("user_id", "demo_user"),
+                "test_id": session_data.get("test_id", "1")
+            }
+        }
+        
+        await db.events.insert_one(event_doc)
+        
+        return SessionResponse(
+            session_id=session_id,
+            user_id=session_data.get("user_id", "demo_user"),
+            test_id=session_data.get("test_id", "1"),
+            start_time=session_data.get("start_time", datetime.utcnow()),
+            end_time=None,
+            final_score=None,
+            final_risk_score=None,
+            status=session_data.get("status", "active"),
+            created_at=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        print(f"❌ Error creating session: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create session"
+        )
+
+
 @router.post("/start", response_model=SessionResponse)
 async def start_session(session_data: SessionCreate):
     """Start a new exam session"""

@@ -9,12 +9,23 @@ router = APIRouter()
 
 
 @router.post("/process-frame", response_model=FrameProcessResponse)
-async def process_frame(request: FrameProcessRequest):
+async def process_frame(request: dict):
     """Process a frame for AI detection and risk assessment"""
     try:
+        # Extract data from request
+        frame_data = request.get("frame")
+        session_id = request.get("session_id")
+        timestamp_str = request.get("timestamp")
+        
+        # Convert timestamp string to datetime if needed
+        if isinstance(timestamp_str, str):
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        else:
+            timestamp = datetime.utcnow()
+        
         # Validate session exists
         db = await database.get_database()
-        session = await db.sessions.find_one({"session_id": request.session_id})
+        session = await db.sessions.find_one({"session_id": session_id})
         
         if not session:
             raise HTTPException(
@@ -24,8 +35,8 @@ async def process_frame(request: FrameProcessRequest):
         
         # Process frame through AI detection
         result = await detection_service.process_frame(
-            request.frame, 
-            request.session_id
+            frame_data, 
+            session_id
         )
         
         # Store events if any alerts detected
@@ -33,9 +44,9 @@ async def process_frame(request: FrameProcessRequest):
             for alert in result.alerts:
                 event_data = {
                     "event_id": f"event_{datetime.utcnow().timestamp()}",
-                    "session_id": request.session_id,
+                    "session_id": session_id,
                     "event_type": alert["type"],
-                    "timestamp": request.timestamp,
+                    "timestamp": timestamp,
                     "confidence": alert.get("confidence"),
                     "risk_score_impact": 0,  # Will be calculated based on alert severity
                     "description": alert["message"],
@@ -48,7 +59,7 @@ async def process_frame(request: FrameProcessRequest):
         
         # Update session with latest risk score
         await db.sessions.update_one(
-            {"session_id": request.session_id},
+            {"session_id": session_id},
             {
                 "$set": {
                     "current_risk_score": result.risk_score,

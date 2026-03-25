@@ -15,33 +15,33 @@ const TestPage = () => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
 
-  // Sample test data
+  // Sample test data - these should match the backend test IDs
   const testData = {
-    1: {
-      title: 'Mathematics Assessment',
+    "demo_test_1": {
+      title: 'Sample Mathematics Test',
       duration: 60,
       questions: [
         {
           id: 1,
+          question: 'What is 2 + 2?',
+          options: ['3', '4', '5', '6'],
+          correct: 1
+        },
+        {
+          id: 2,
           question: 'What is the derivative of x² + 3x + 2?',
           options: ['2x + 3', 'x + 3', '2x + 2', 'x² + 3'],
           correct: 0
         },
         {
-          id: 2,
+          id: 3,
           question: 'Solve for x: 2x + 5 = 15',
           options: ['x = 5', 'x = 10', 'x = 7.5', 'x = 3'],
-          correct: 0
-        },
-        {
-          id: 3,
-          question: 'What is the integral of 2x?',
-          options: ['x² + C', '2x² + C', 'x + C', '2x + C'],
           correct: 0
         }
       ]
     },
-    2: {
+    "demo_test_2": {
       title: 'Computer Science Fundamentals',
       duration: 90,
       questions: [
@@ -56,11 +56,17 @@ const TestPage = () => {
           question: 'Which data structure uses LIFO principle?',
           options: ['Queue', 'Stack', 'Array', 'Linked List'],
           correct: 1
+        },
+        {
+          id: 3,
+          question: 'What does API stand for?',
+          options: ['Application Programming Interface', 'Advanced Programming Interface', 'Application Process Interface', 'Automated Programming Interface'],
+          correct: 0
         }
       ]
     },
-    3: {
-      title: 'English Proficiency',
+    "demo_test_3": {
+      title: 'English Proficiency Test',
       duration: 45,
       questions: [
         {
@@ -68,12 +74,24 @@ const TestPage = () => {
           question: 'Choose the correct form: "He ___ to school yesterday."',
           options: ['go', 'went', 'gone', 'going'],
           correct: 1
+        },
+        {
+          id: 2,
+          question: 'Which sentence is grammatically correct?',
+          options: ['Their going to the store', 'They\'re going to the store', 'There going to the store', 'Theyre going to the store'],
+          correct: 1
+        },
+        {
+          id: 3,
+          question: 'What is the past tense of "write"?',
+          options: ['wrote', 'written', 'writed', 'writing'],
+          correct: 0
         }
       ]
     }
   };
 
-  const currentTest = testData[testId] || testData[1];
+  const currentTest = testData[testId] || testData["demo_test_1"];
 
   // Update clock
   useEffect(() => {
@@ -83,7 +101,7 @@ const TestPage = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Initialize camera
+  // Initialize camera and create session
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -97,12 +115,42 @@ const TestPage = () => {
         videoRef.current.srcObject = stream;
         setCameraActive(true);
         
-        // Start sending frames to backend (dummy implementation)
-        startFrameCapture();
+        // Create session for this test
+        await createTestSession();
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
       alert('Unable to access camera. Please ensure camera permissions are granted.');
+    }
+  };
+
+  // Create test session in database
+  const createTestSession = async () => {
+    try {
+      const sessionId = `session_${testId}_${Date.now()}`;
+      const response = await fetch('http://localhost:8000/api/v1/session/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          test_id: testId,
+          user_id: 'demo_user', // Replace with actual user ID when auth is implemented
+          start_time: new Date().toISOString(),
+          status: 'active'
+        })
+      });
+
+      if (response.ok) {
+        console.log('Session created successfully');
+        // Store session ID for later use
+        window.currentSessionId = sessionId;
+      } else {
+        console.error('Failed to create session');
+      }
+    } catch (error) {
+      console.error('Error creating session:', error);
     }
   };
 
@@ -121,7 +169,7 @@ const TestPage = () => {
         // Get frame data
         const frameData = canvas.toDataURL('image/jpeg', 0.8);
         
-        // Send to backend (dummy implementation)
+        // Send to backend with proper session ID
         sendFrameToBackend(frameData);
       }
       
@@ -134,18 +182,23 @@ const TestPage = () => {
     captureFrame();
   };
 
-  // Dummy backend communication
+  // Send frame to backend with proper session management
   const sendFrameToBackend = async (frameData) => {
     try {
-      // Simulate backend processing
-      const response = await fetch('http://localhost:8000/api/v1/process-frame', {
+      const sessionId = window.currentSessionId;
+      if (!sessionId) {
+        console.error('No session ID available');
+        return;
+      }
+
+      const response = await fetch('http://localhost:8000/api/v1/detect/process-frame', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           frame: frameData,
-          session_id: `session_${testId}_${Date.now()}`,
+          session_id: sessionId,
           timestamp: new Date().toISOString()
         })
       });
@@ -154,7 +207,7 @@ const TestPage = () => {
         const result = await response.json();
         
         // Update risk score
-        if (result.risk_score) {
+        if (result.risk_score !== undefined) {
           setRiskScore(result.risk_score);
         }
         
@@ -163,12 +216,14 @@ const TestPage = () => {
           setAlerts(prev => [...prev, ...result.alerts]);
         }
       } else {
-        // Dummy response for demo
-        const dummyRisk = Math.floor(Math.random() * 30);
+        console.error('Backend returned error:', response.status);
+        
+        // Fallback to dummy data for demo
+        const dummyRisk = Math.floor(Math.random() * 10);
         setRiskScore(prev => Math.min(100, prev + dummyRisk));
         
         // Random alerts for demo
-        if (Math.random() > 0.8) {
+        if (Math.random() > 0.9) {
           const dummyAlerts = [
             'Looking away detected',
             'Multiple faces detected',
@@ -184,10 +239,10 @@ const TestPage = () => {
         }
       }
     } catch (error) {
-      console.log('Backend not available - using dummy data');
+      console.error('Error sending frame to backend:', error);
       
-      // Generate dummy risk score
-      const dummyRisk = Math.floor(Math.random() * 20);
+      // Generate minimal dummy risk score
+      const dummyRisk = Math.floor(Math.random() * 5);
       setRiskScore(prev => Math.min(100, prev + dummyRisk));
     }
   };
@@ -196,6 +251,8 @@ const TestPage = () => {
   const startTest = () => {
     setTestStarted(true);
     requestFullscreen();
+    // Start frame capture when test begins
+    startFrameCapture();
   };
 
   // Fullscreen functionality

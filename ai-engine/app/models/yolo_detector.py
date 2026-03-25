@@ -27,10 +27,26 @@ class YOLODetector:
                 
                 # Load model in thread pool to avoid blocking
                 loop = asyncio.get_event_loop()
-                self.model = await loop.run_in_executor(
-                    None, 
-                    lambda: YOLO(self.model_path)
-                )
+                
+                # Try to load from local path first, if not available download
+                import os
+                if not os.path.exists(self.model_path):
+                    print(f"   Model not found at {self.model_path}, downloading...")
+                    self.model = await loop.run_in_executor(
+                        None, 
+                        lambda: YOLO('yolov8n.pt')
+                    )
+                    # Save the model locally
+                    os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+                    await loop.run_in_executor(
+                        None,
+                        lambda: self.model.save(self.model_path)
+                    )
+                else:
+                    self.model = await loop.run_in_executor(
+                        None, 
+                        lambda: YOLO(self.model_path)
+                    )
                 
                 self.loaded = True
                 print(f"✅ YOLO model loaded successfully")

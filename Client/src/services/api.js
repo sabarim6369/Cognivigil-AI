@@ -147,7 +147,7 @@ class ApiService {
 
   // Detection API
   async processFrame(frameData, sessionId) {
-    return this.request('/process-frame', {
+    return this.request('/detect/process-frame', {
       method: 'POST',
       body: JSON.stringify({
         frame: frameData,
